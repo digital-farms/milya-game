@@ -57,7 +57,14 @@ export default class MiniGameScene extends Phaser.Scene {
 
   finishMiniGame() {
     this.scene.get('UIScene').events.emit('miniGameSuccess', this.newCharacterIdx);
+    // --- Корректируем score ---
+    const gameScene = this.scene.get(this.returnScene);
+    const unlockScore = this.sys.game.config.physics.arcade?.CHARACTERS?.[this.newCharacterIdx]?.unlockScore
+      ?? (window.CHARACTERS ? window.CHARACTERS[this.newCharacterIdx].unlockScore : null);
+    // Если CHARACTERS не доступен глобально, fallback на gameScene
+    const realUnlockScore = unlockScore || (gameScene && gameScene.cache && gameScene.cache.json && gameScene.cache.json.get('CHARACTERS') ? gameScene.cache.json.get('CHARACTERS')[this.newCharacterIdx].unlockScore : 0);
+    const newScore = gameScene.score - realUnlockScore;
     this.scene.stop();
-    this.scene.resume(this.returnScene, { newCharacter: this.newCharacterIdx });
+    this.scene.resume(this.returnScene, { newCharacter: this.newCharacterIdx, score: Math.max(0, newScore) });
   }
 }

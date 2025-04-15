@@ -13,6 +13,7 @@ export default class UIScene extends Phaser.Scene {
   create() {
     this.score = 0;
     this.nextUnlock = CHARACTERS[1]?.unlockScore || null;
+    this.pendingUnlockIdx = null;
 
     // --- Новый кастомный UI ---
     // Силуэт следующего героя
@@ -59,12 +60,48 @@ export default class UIScene extends Phaser.Scene {
     this.unlockText.setVisible(true);
     this.unlockWindow = null;
 
-    // Рисуем иконку рюкзака (уменьшаем размер и ставим в угол)
+    // --- Иконка рюкзака ---
     this.backpackIcon = this.add.image(700, 100, 'backpack')
       .setInteractive({ useHandCursor: true })
       .setScale(0.18)
-      .setAlpha(0.8);
-    this.backpackGlow = this.add.rectangle(760, 60, 90, 90, 0xf9e800, 0.25).setVisible(false);
+      .setDepth(3);
+    this.backpackPulseTween = null;
+
+    // --- Клик по рюкзаку ---
+    this.backpackIcon.on('pointerdown', () => {
+      console.log('backpack click', this.backpackIcon.pulseActive, this.pendingUnlockIdx);
+      if (this.backpackIcon.pulseActive && this.pendingUnlockIdx !== null) {
+        if (this.backpackSound) this.backpackSound.play();
+        this.scene.get('GameScene').scene.pause();
+        this.scene.launch('MiniGameScene', { returnScene: 'GameScene', newCharacterIdx: this.pendingUnlockIdx });
+        this.setBackpackPulse(false);
+        this.pendingUnlockIdx = null;
+      }
+    });
+
+    // --- Функция управления прыгающей анимацией ---
+    this.setBackpackPulse = (active) => {
+      if (active) {
+        if (!this.backpackPulseTween) {
+          this.backpackPulseTween = this.tweens.add({
+            targets: this.backpackIcon,
+            y: { from: 100, to: 80 },
+            yoyo: true,
+            repeat: -1,
+            duration: 320,
+            ease: 'Sine.easeInOut',
+          });
+          this.backpackIcon.pulseActive = true;
+        }
+      } else {
+        if (this.backpackPulseTween) {
+          this.backpackPulseTween.stop();
+          this.backpackPulseTween = null;
+          this.backpackIcon.y = 100;
+          this.backpackIcon.pulseActive = false;
+        }
+      }
+    };
 
     this.load.audio('backpack', BACKPACK_SOUND);
     this.backpackSound = null;
@@ -72,54 +109,37 @@ export default class UIScene extends Phaser.Scene {
       this.backpackSound = this.sound.add('backpack');
     });
 
-    this.backpackIcon.on('pointerdown', () => {
-      if (this.backpackGlow.visible && this.backpackSound) {
-        this.backpackSound.play();
-      }
-    });
-
-    // Событие обновления очков и до нового героя
-    this.events.on('scoreChanged', (score, nextUnlockScore) => {
+    // --- Обработка очков и pulse ---
+    this.events.on('scoreChanged', (tapsSinceLastUnlock, score) => {
       this.scoreText.setText(score);
-      // Следующий герой и сколько до него
-      const nextIdx = CHARACTERS.findIndex(ch => ch.unlockScore > score);
+      let nextIdx = -1;
+      for (let i = 0; i < CHARACTERS.length; ++i) {
+        if (!this.scene.get('GameScene').unlockedCharacters.includes(i)) {
+          nextIdx = i;
+          break;
+        }
+      }
       if (nextIdx !== -1) {
-        this.nextScoreText.setText(CHARACTERS[nextIdx].unlockScore - score);
+        const needTaps = CHARACTERS[nextIdx].unlockScore;
+        this.nextScoreText.setText(Math.max(0, needTaps - tapsSinceLastUnlock));
         this.silhouette.setTexture(CHARACTERS[nextIdx].key).setTint(0x171b3c);
+        if (tapsSinceLastUnlock >= needTaps) {
+          this.setBackpackPulse(true);
+          this.pendingUnlockIdx = nextIdx;
+        } else {
+          this.setBackpackPulse(false);
+          this.pendingUnlockIdx = null;
+        }
       } else {
         this.nextScoreText.setText('0');
-        this.silhouette.setTexture(CHARACTERS[CHARACTERS.length-1].key).setTint(0x171b3c);
+        this.setBackpackPulse(false);
+        this.pendingUnlockIdx = null;
       }
-    });
-
-    this.events.on('showUnlock', idx => {
-      this.showUnlockWindow(idx);
     });
 
     this.events.on('miniGameSuccess', idx => {
       this.showSuccessWindow(idx);
     });
-  }
-
-  showUnlockWindow(idx) {
-    if (this.unlockWindow) this.unlockWindow.destroy();
-    const ch = CHARACTERS[idx];
-    const bg = this.add.rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, 0x222222, 0.5).setDepth(10);
-
-    // Силуэт вместо героя
-    const img = this.add.image(400, 270, ch.key).setScale(0.42).setTint(0x171b3c).setDepth(11);
-    const txt = this.add.text(400, 200, `Новый герой!`, { font: '26px Arial', fill: '#fff' }).setOrigin(0.5).setDepth(11);
-    const btn = this.add.text(400, 360, 'Собрать предметы', { font: '22px Arial', fill: '#ff0', backgroundColor: '#444', padding: { left: 16, right: 16, top: 24, bottom: 24 } })
-      .setOrigin(0.5).setInteractive().setDepth(11);
-    btn.on('pointerdown', () => {
-      if (this.backpackSound) this.backpackSound.play();
-      this.scene.get('GameScene').scene.pause();
-      this.scene.launch('MiniGameScene', { returnScene: 'GameScene', newCharacterIdx: idx });
-      bg.destroy(); img.destroy(); txt.destroy(); btn.destroy();
-      this.unlockWindow = null;
-    });
-    this.unlockWindow = bg;
-    if (this.backpackSound) this.backpackSound.play();
   }
 
   showSuccessWindow(idx) {

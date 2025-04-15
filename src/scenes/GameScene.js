@@ -9,6 +9,7 @@ export default class GameScene extends Phaser.Scene {
   constructor() {
     super('GameScene');
     this.score = 0;
+    this.tapsSinceLastUnlock = 0;
     this.unlockedCharacters = [0]; // Индексы открытых персонажей
     this.currentCharacterIdx = 0;
     this.characterSprite = null;
@@ -21,6 +22,7 @@ export default class GameScene extends Phaser.Scene {
     if (data && data.score) {
       this.score = data.score;
     }
+    this.tapsSinceLastUnlock = (data && typeof data.tapsSinceLastUnlock === 'number') ? data.tapsSinceLastUnlock : 0;
     this.currentCharacterIdx = 0;
   }
 
@@ -81,16 +83,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   incrementScore() {
+    this.tapsSinceLastUnlock++;
     this.score++;
-    this.scene.get('UIScene').events.emit('scoreChanged', this.score, this.nextUnlockScore());
-    // Проверка на открытие нового персонажа
-    if (this.unlockedCharacters.length < CHARACTERS.length) {
-      const nextIdx = this.unlockedCharacters.length;
-      if (this.score >= CHARACTERS[nextIdx].unlockScore) {
-        this.scene.get('UIScene').events.emit('showUnlock', nextIdx);
-        this.scene.pause();
-      }
-    }
+    this.scene.get('UIScene').events.emit('scoreChanged', this.tapsSinceLastUnlock, this.score);
   }
 
   nextUnlockScore() {
@@ -102,6 +97,6 @@ export default class GameScene extends Phaser.Scene {
 
   unlockCharacter(idx) {
     this.unlockedCharacters.push(idx);
-    this.scene.restart({ score: this.score, unlockedCharacters: this.unlockedCharacters });
+    this.scene.restart({ unlockedCharacters: this.unlockedCharacters, tapsSinceLastUnlock: 0 });
   }
 }
